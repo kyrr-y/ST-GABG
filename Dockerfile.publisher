@@ -1,0 +1,5 @@
+FROM python:3.8-slim
+WORKDIR /app
+RUN pip install paho-mqtt
+COPY mqtt_publisher.py .
+CMD ["python", "mqtt_publisher.py"]

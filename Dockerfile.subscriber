@@ -1,0 +1,5 @@
+FROM python:3.8-slim
+WORKDIR /app
+RUN pip install paho-mqtt influxdb-client requests
+COPY mqtt_subscriber_influx.py .
+CMD ["python", "mqtt_subscriber_influx.py"]

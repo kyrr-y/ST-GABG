@@ -1,0 +1,106 @@
+
+services:
+  # ========== 原有 API 服务 ==========
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app   
+    depends_on:
+      - mosquitto
+      - influxdb
+    networks:
+      - st-gabg-net
+
+  # ========== MQTT Broker (Mosquitto) ==========
+  mosquitto:
+    image: eclipse-mosquitto:2.0
+    container_name: mosquitto
+    ports:
+      - "1883:1883"      # MQTT 协议端口
+      - "9001:9001"      # WebSocket 端口（可选）
+    volumes:
+      - ./mosquitto/config:/mosquitto/config
+      - ./mosquitto/data:/mosquitto/data
+      - ./mosquitto/log:/mosquitto/log
+    networks:
+      - st-gabg-net
+
+  # ========== InfluxDB 2.x ==========
+  influxdb:
+    image: influxdb:2.7
+    container_name: influxdb
+    ports:
+      - "8086:8086"
+    environment:
+      - INFLUXDB_DB=vibration_db
+      - INFLUXDB_ADMIN_USER=admin
+      - INFLUXDB_ADMIN_PASSWORD=admin123
+      - INFLUXDB_HTTP_AUTH_ENABLED=true
+    volumes:
+      - influxdb-data:/var/lib/influxdb2
+    networks:
+      - st-gabg-net
+
+  # ========== Grafana ==========
+  grafana:
+    image: grafana/grafana:10.2.3
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning   # 自动配置数据源和仪表盘
+    depends_on:
+      - influxdb
+    networks:
+      - st-gabg-net
+
+  # ========== 数据发布者（模拟振动数据） ==========
+  publisher:
+    build:
+      context: .
+      dockerfile: Dockerfile.publisher   # 单独 Dockerfile，或复用基础镜像
+    container_name: mqtt-publisher
+    depends_on:
+      - mosquitto
+    environment:
+      - MQTT_BROKER=mosquitto
+      - MQTT_PORT=1883
+      - MQTT_TOPIC=sensor/vibration
+    networks:
+      - st-gabg-net
+    restart: unless-stopped
+
+  # ========== 数据订阅者（写入 InfluxDB） ==========
+  subscriber:
+    build:
+      context: .
+      dockerfile: Dockerfile.subscriber
+    container_name: influx-writer
+    depends_on:
+      - mosquitto
+      - influxdb
+    environment:
+      - MQTT_BROKER=mosquitto
+      - MQTT_PORT=1883
+      - MQTT_TOPIC=sensor/vibration
+      - INFLUXDB_URL=http://influxdb:8086
+      - INFLUXDB_TOKEN=2SlInORlfj-yVQcDeW50WWhyNzeUwbO9tI0VY1KXomvruMAwWNVEEZ3ZsXJWR2oK4i8_Ds0lBV1p8WUC8-ZfAA==  
+      - INFLUXDB_ORG=my-org
+      - INFLUXDB_BUCKET=vibration_bucket
+    networks:
+      - st-gabg-net
+    restart: unless-stopped
+
+networks:
+  st-gabg-net:
+    driver: bridge
+
+volumes:
+  influxdb-data:
+  grafana-data:
